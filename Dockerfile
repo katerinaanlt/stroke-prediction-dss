@@ -2,19 +2,21 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install dependencies
+# Install Python packages
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source code and dataset
-COPY data/ ./data/
-COPY src/ ./src/
-COPY app/ ./app/
+# Copy all project files from the current folder into the container
+COPY healthcare-dataset-stroke-data.csv .
+COPY preprocess.py .
+COPY train.py .
+COPY app.py .
+COPY index.html .
 
-# Run preprocessing and model training during image build to generate models/stroke_pipeline.pkl
-RUN python src/train.py
+# Preprocess data, evaluate models, and generate stroke_pipeline.pkl during build
+RUN python train.py
 
 EXPOSE 5000
 
-# Run production WSGI server
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app.app:app"]
+# Start the Flask API via Gunicorn
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]
