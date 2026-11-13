@@ -1,6 +1,7 @@
+from pathlib import Path
 import joblib
 import matplotlib
-matplotlib.use("Agg")  # Headless backend so Docker builds never crash on plots
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score
@@ -20,7 +21,7 @@ from sklearn.metrics import (
     roc_curve,
 )
 
-from preprocess import clean_stroke_data, spread_subsample_csv
+from preprocess import PROJECT_ROOT, clean_stroke_data, spread_subsample_csv
 
 
 def build_preprocessor() -> ColumnTransformer:
@@ -58,19 +59,19 @@ def build_preprocessor() -> ColumnTransformer:
 
 
 def main():
-    # 1. Clean and balance the dataset (498 rows: 249 Stroke, 249 No Stroke)
     cleaned_df = clean_stroke_data(
         input_filename="healthcare-dataset-stroke-data.csv",
         output_filename="cleaned_stroke_data.csv",
         weka_nominal_prefixes=False,
     )
     balanced_df = spread_subsample_csv(cleaned_df, class_attribute="stroke")
-    balanced_df.to_csv("balanced_stroke_data.csv", index=False)
+
+    balanced_path = PROJECT_ROOT / "balanced_stroke_data.csv"
+    balanced_df.to_csv(balanced_path, index=False)
 
     X = balanced_df.drop(columns=["stroke"])
     y = balanced_df["stroke"].astype(int)
 
-    # 80/20 stratified split (398 train, 100 test: 50 False, 50 True)
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.20, stratify=y, random_state=42
     )
@@ -115,7 +116,6 @@ def main():
         fpr, tpr, _ = roc_curve(y_test, y_prob)
         roc_data[name] = (fpr, tpr, auc)
 
-    # 2. Save evaluation plot (Confusion Matrices + ROC Curves)
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
     plot_models = ["Logistic Regression", "Decision Tree", "Random Forest"]
     coords = [(0, 0), (0, 1), (1, 0)]
@@ -134,7 +134,6 @@ def main():
         axes[r, c].set_xlabel("Predicted")
         axes[r, c].set_ylabel("Actual")
 
-    # Bottom-right subplot: ROC Curves
     ax_roc = axes[1, 1]
     for m_name, (fpr, tpr, auc_val) in roc_data.items():
         ax_roc.plot(fpr, tpr, label=f"{m_name} (AUC = {auc_val:.2f})")
@@ -145,12 +144,13 @@ def main():
     ax_roc.legend(loc="lower right")
 
     plt.tight_layout()
-    plt.savefig("model_evaluation.png", dpi=150)
-    print("Saved evaluation plots to model_evaluation.png")
+    plot_path = PROJECT_ROOT / "model_evaluation.png"
+    plt.savefig(plot_path, dpi=150)
+    print(f"Saved evaluation plots to {plot_path}")
 
-    # 3. Export the Random Forest pipeline for the Flask web application
-    joblib.dump(trained_pipelines["Random Forest"], "stroke_pipeline.pkl")
-    print("Saved Random Forest pipeline to stroke_pipeline.pkl")
+    model_path = PROJECT_ROOT / "stroke_pipeline.pkl"
+    joblib.dump(trained_pipelines["Random Forest"], model_path)
+    print(f"Saved Random Forest pipeline to {model_path}")
 
 
 if __name__ == "__main__":
