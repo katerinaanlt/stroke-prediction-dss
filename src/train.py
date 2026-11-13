@@ -1,85 +1,86 @@
-import os
-import joblib
 import pandas as pd
-from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.impute import SimpleImputer
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-from sklearn.linear_model import LogisticRegression
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.metrics import accuracy_score, roc_auc_score, classification_report
+import numpy as np
 
-from preprocess import clean_stroke_data, spread_subsample_csv
 
-def build_preprocessor():
-    numeric_features = ['age', 'avg_glucose_level', 'bmi']
-    categorical_features = ['gender', 'hypertension', 'heart_disease', 'ever_married', 'work_type', 'Residence_type', 'smoking_status']
+def clean_stroke_data(
+    input_filename: str = "healthcare-dataset-stroke-data.csv",
+    output_filename: str = "cleaned_stroke_data.csv",
+    weka_nominal_prefixes: bool = False,
+) -> pd.DataFrame:
+    """Cleans the raw stroke dataset: imputes missing BMI values and removes ID."""
+    # 1. Read the CSV file into a pandas DataFrame
+    df = pd.read_csv(input_filename)
+    print(f"Successfully read data from {input_filename} (Shape: {df.shape})")
 
-    numeric_transformer = Pipeline(steps=[
-        ('imputer', SimpleImputer(strategy='mean')),
-        ('scaler', StandardScaler())
-    ])
+    # 2. Handle potential 'N/A' values in the 'bmi' column
+    df["bmi"] = df["bmi"].replace("N/A", np.nan)
 
-    categorical_transformer = Pipeline(steps=[
-        ('imputer', SimpleImputer(strategy='most_frequent')),
-        ('onehot', OneHotEncoder(handle_unknown='ignore'))
-    ])
+    # 3. Convert the 'bmi' column to numeric, handling errors
+    df["bmi"] = pd.to_numeric(df["bmi"], errors="coerce")
 
-    return ColumnTransformer(transformers=[
-        ('num', numeric_transformer, numeric_features),
-        ('cat', categorical_transformer, categorical_features)
-    ])
+    # 4. Impute missing 'bmi' values with the mean
+    bmi_mean = df["bmi"].mean()
+    df["bmi"] = df["bmi"].fillna(bmi_mean)
+    print(f"Handled missing 'bmi' values by filling with the mean ({bmi_mean:.2f}).")
 
-def main():
-    df = clean_stroke_data("data/healthcare-dataset-stroke-data.csv")
-    balanced_df = spread_subsample_csv(df, class_attribute='stroke')
+    # 5. Optional: Add prefix to ensure nominal interpretation in Weka
+    if weka_nominal_prefixes:
+        columns_to_nominal = ["heart_disease", "hypertension", "stroke"]
+        for col in columns_to_nominal:
+            df[col] = df[col].astype(str).apply(lambda x: f"{col}_{x}")
+            print(f"Converted column '{col}' to nominal (categorical) type with prefix.")
 
-    X = balanced_df.drop(columns=['stroke'])
-    y = balanced_df['stroke']
+    # 6. Remove the 'id' column
+    if "id" in df.columns:
+        df = df.drop(columns=["id"])
+        print("Removed the 'id' column.")
 
-    # 80/20 split on the 498 rows gives exactly 100 test instances (50 False, 50 True), matching your report!
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=100, stratify=y, random_state=42
-    )
+    # 7. Save the cleaned DataFrame to a new CSV file
+    if output_filename:
+        df.to_csv(output_filename, index=False)
+        print(f"Successfully saved cleaned data to {output_filename}")
 
-    models = {
-        "Logistic Regression": LogisticRegression(max_iter=1000, random_state=42),
-        "Decision Tree": DecisionTreeClassifier(random_state=42),
-        "Random Forest": RandomForestClassifier(n_estimators=100, random_state=42),
-        "KNN": KNeighborsClassifier(n_neighbors=5)
-    }
+    return df
 
-    cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
-    trained_pipelines = {}
 
-    for name, classifier in models.items():
-        pipe = Pipeline(steps=[
-            ('preprocessor', build_preprocessor()),
-            ('classifier', classifier)
-        ])
-        
-        cv_auc = cross_val_score(pipe, X_train, y_train, cv=cv, scoring='roc_auc').mean()
-        pipe.fit(X_train, y_train)
-        
-        y_pred = pipe.predict(X_test)
-        y_prob = pipe.predict_proba(X_test)[:, 1]
-        
-        print(f"=== {name} Results ===")
-        print(f"  Accuracy: {accuracy_score(y_test, y_pred):.4f}")
-        print(f"  Mean CV AUC: {cv_auc:.4f}")
-        print(f"  AUC: {roc_auc_score(y_test, y_prob):.4f}")
-        print("  Classification Report:")
-        print(classification_report(y_test, y_pred, target_names=['False', 'True']))
-        
-        trained_pipelines[name] = pipe
+def spread_subsample_csv(df: pd.DataFrame, class_attribute: str = "stroke") -> pd.DataFrame:
+    """Balances the target class (1:1 ratio) using random undersampling (SpreadSubsample)."""
+    if df.empty:
+        return pd.DataFrame()
 
-    # Save Random Forest pipeline for the Flask app
-    os.makedirs("models", exist_ok=True)
-    joblib.dump(trained_pipelines["Random Forest"], "models/stroke_pipeline.pkl")
-    print("Saved Random Forest pipeline to models/stroke_pipeline.pkl")
+    if class_attribute not in df.columns:
+        print(f"Error: Class attribute '{class_attribute}' not found.")
+        return df
+
+    class_counts = df[class_attribute].value_counts()
+    majority_class = class_counts.idxmax()
+    minority_class = class_counts.idxmin()
+    n_minority = class_counts[minority_class]
+    n_majority = class_counts[majority_class]
+
+    if n_majority <= n_minority:
+        print("Class distribution is already balanced or the minority class is larger.")
+        return df
+
+    majority_indices = df[df[class_attribute] == majority_class].index
+    np.random.seed(42)  # For reproducibility
+    sampled_indices = np.random.choice(majority_indices, size=n_minority, replace=False)
+
+    minority_df = df[df[class_attribute] == minority_class]
+    sampled_majority_df = df.loc[sampled_indices]
+
+    balanced_df = pd.concat([minority_df, sampled_majority_df])
+    balanced_df = balanced_df.reset_index(drop=True)
+    return balanced_df
+
 
 if __name__ == "__main__":
-    main()
+    cleaned_df = clean_stroke_data(
+        input_filename="healthcare-dataset-stroke-data.csv",
+        output_filename="cleaned_stroke_data.csv",
+        weka_nominal_prefixes=False,
+    )
+    balanced_df = spread_subsample_csv(cleaned_df, class_attribute="stroke")
+    balanced_df.to_csv("balanced_stroke_data.csv", index=False)
+    print(f"Saved balanced dataset to balanced_stroke_data.csv (Shape: {balanced_df.shape})")
+    print(balanced_df["stroke"].value_counts())
