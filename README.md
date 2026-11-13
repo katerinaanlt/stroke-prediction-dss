@@ -47,8 +47,8 @@ During exploratory benchmarking across all `498` balanced instances using 10-fol
 
 > **Clinical Model Selection Note:** While J48 provides transparent rule-tree interpretability (highlighting `age > 47`, `heart_disease`, `bmi`, `hypertension`, and `avg_glucose_level` as primary split nodes), **Random Forest** was selected for deployment in `stroke_pipeline.pkl` due to its higher sensitivity/recall on positive stroke cases and stronger resistance to overfitting.
 
-![Model Evaluation Plots](model_evalua<img width="2100" height="1500" alt="model_evaluation" src="https://github.com/user-attachments/assets/5fc14fe1-bde6-4311-95f4-598287222f77" />
-tion.png)
+<img width="2100" height="1500" alt="model_evaluation" src="https://github.com/user-attachments/assets/5fc14fe1-bde6-4311-95f4-598287222f77" />
+
 
 ---
 
