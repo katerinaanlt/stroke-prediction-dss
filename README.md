@@ -1,1 +1,44 @@
 # stroke-prediction-dss
+# Clinical Decision Support System: Stroke Risk Prediction
+
+An end-to-end Machine Learning pipeline and web-based Decision Support System (DSS) designed to predict patient stroke risk based on clinical and demographic features.
+
+## Overview
+Medical datasets often suffer from noisy attributes and severe class imbalance. This project implements a complete data preprocessing pipeline, benchmarks multiple classification algorithms (in Python and Weka), and deploys the top-performing **Random Forest** pipeline via a **Flask REST API** and interactive web frontend.
+
+## Key Features
+* **Automated Data Preprocessing:** Handles missing values (`N/A` imputation via feature mean for `bmi`), removes non-predictive identifiers, and converts numeric flags into nominal categorical representations.
+* **Class Imbalance Mitigation:** Implements custom random undersampling (`SpreadSubsample`) in Python to balance the target `stroke` class (1:1 ratio, 498 total instances), preventing majority-class bias.
+* **Model Benchmarking:** Evaluates **Random Forest**, **Logistic Regression**, **Decision Trees (CART / J48)**, and **K-Nearest Neighbors (KNN)** using 10-fold stratified cross-validation.
+* **Full-Stack Deployment:**
+  * **Backend:** Python Flask server exposing a `/predict` POST endpoint with CORS support, loading a serialized `.pkl` preprocessing and classification pipeline.
+  * **Frontend:** Responsive HTML/JavaScript client using the Fetch API for asynchronous real-time risk evaluation.
+
+## Model Performance Summary
+
+### Python Pipeline Evaluation (Test Split)
+| Model | Accuracy | Mean CV AUC | ROC AUC | Recall (Stroke) | F1-Score |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **Logistic Regression** | **81.0%** | **0.811** | **0.864** | 0.90 | **0.81** |
+| **Random Forest** | 80.0% | 0.804 | 0.849 | **0.92** | 0.80 |
+| **KNN** | 74.0% | 0.749 | 0.852 | 0.78 | 0.74 |
+| **Decision Tree** | 71.0% | 0.668 | 0.710 | 0.76 | 0.71 |
+
+*(In 10-fold Weka cross-validation across all 498 balanced instances, Random Forest achieved **73.69% accuracy** and **0.811 ROC Area**, outperforming J48 Decision Trees at **72.29% accuracy** while reducing overfitting.)*
+
+## Project Structure
+```text
+├── data/
+│   ├── raw_stroke_data.csv
+│   └── cleaned_stroke_data.csv
+├── preprocessing/
+│   ├── clean_data.py          # Imputation & nominal conversion
+│   └── balance_classes.py     # SpreadSubsample implementation
+├── models/
+│   ├── train_evaluate.py      # Model training, CV & ROC/Confusion Matrix plots
+│   └── stroke_pipeline.pkl    # Serialized Random Forest pipeline
+├── app/
+│   ├── app.py                 # Flask REST API (/predict)
+│   └── index.html             # Frontend UI & Fetch logic
+├── assets/                    # Confusion matrices & Weka distribution plots
+└── requirements.txt
